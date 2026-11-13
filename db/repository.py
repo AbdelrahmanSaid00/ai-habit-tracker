@@ -60,14 +60,14 @@ class HabitRepository:
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
-    async def update(self, habit_id: str, **kwargs) -> Optional[Habit]:
-        stmt = update(Habit).where(Habit.id == habit_id).values(**kwargs).returning(Habit)
+    async def update(self, habit_id: str, user_id: str, **kwargs) -> Optional[Habit]:
+        stmt = update(Habit).where(Habit.id == habit_id , Habit.user_id == user_id).values(**kwargs).returning(Habit)
         result = await self.session.execute(stmt)
         await self.session.commit()
         return result.scalar_one_or_none()
 
-    async def soft_delete(self, habit_id: str) -> bool:
-        stmt = update(Habit).where(Habit.id == habit_id).values(is_active=False)
+    async def soft_delete(self, habit_id: str , user_id: str) -> bool:
+        stmt = update(Habit).where(Habit.id == habit_id , Habit.user_id == user_id).values(is_active=False)
         result = await self.session.execute(stmt)
         await self.session.commit()
         return result.rowcount > 0
@@ -79,10 +79,16 @@ class HabitLogRepository:
     async def create_or_update_log(
         self,
         habit_id: str,
+        user_id: str,
         achieved_value: float,
         log_date: Optional[date] = None,
         notes: Optional[str] = None
     ) -> HabitLog:
+        habit_stmt = select(Habit).where(Habit.id == habit_id, Habit.user_id == user_id)
+        habit_result = await self.session.execute(habit_stmt)
+        if not habit_result.scalar_one_or_none():
+            raise ValueError("Habit not found or access denied.")
+
         target_date = log_date or date.today()
         stmt = select(HabitLog).where(HabitLog.habit_id == habit_id, HabitLog.log_date == target_date)
         result = await self.session.execute(stmt)
@@ -95,6 +101,7 @@ class HabitLogRepository:
             await self.session.commit()
             await self.session.refresh(existing_log)
             return existing_log
+
         new_log = HabitLog(
             habit_id=habit_id,
             log_date=target_date,
@@ -106,8 +113,12 @@ class HabitLogRepository:
         await self.session.refresh(new_log)
         return new_log
 
-    async def get_logs_by_date(self, habit_id: str, log_date: date) -> Optional[HabitLog]:
-        stmt = select(HabitLog).where(HabitLog.habit_id == habit_id, HabitLog.log_date == log_date)
+    async def get_logs_by_date(self, habit_id: str, user_id: str, log_date: date) -> Optional[HabitLog]:
+        stmt = ( 
+            select(HabitLog)
+            .join(Habit, HabitLog.habit_id == Habit.id)
+            .where(HabitLog.habit_id == habit_id, Habit.user_id == user_id, HabitLog.log_date == log_date)
+        )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
