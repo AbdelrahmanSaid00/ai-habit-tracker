@@ -38,6 +38,7 @@ venv.bak/
 *.db
 *.sqlite
 *.sqlite3
+test_db.py
 
 # Logs & Storage
 *.log
